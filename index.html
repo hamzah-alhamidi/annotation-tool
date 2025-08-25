@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UI Annotation Tool</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>UI Annotation Tool</h1>
+            <div class="controls">
+                <input type="file" id="imageInput" accept="image/*">
+                <input type="text" id="formType" placeholder="Form Type" value="current bank account agreement for individuals - english">
+                <input type="number" id="pageNumber" placeholder="Page Number" value="1" min="1">
+                <button id="exportBtn">Export JSON</button>
+                <button id="clearBtn">Clear All</button>
+            </div>
+        </header>
+
+        <div class="main-content">
+            <div class="sidebar">
+                <div class="mode-selector">
+                    <button id="sectionMode" class="mode-btn active">Section</button>
+                    <button id="labelMode" class="mode-btn">Label</button>
+                    <button id="inputMode" class="mode-btn">Input</button>
+                </div>
+
+                <div class="properties-panel">
+                    <div id="sectionPanel" class="panel active">
+                        <h3>Section Properties</h3>
+                        <input type="text" id="sectionName" placeholder="Section name">
+                    </div>
+
+                    <div id="labelPanel" class="panel">
+                        <h3>Label Properties</h3>
+                        <select id="parentSection">
+                            <option value="">Select parent section</option>
+                        </select>
+                        <input type="text" id="labelText" placeholder="Label text">
+                    </div>
+
+                    <div id="inputPanel" class="panel">
+                        <h3>Input Properties</h3>
+                        <select id="parentLabel">
+                            <option value="">Select parent label</option>
+                        </select>
+                        <input type="text" id="inputName" placeholder="Input name">
+                        <input type="text" id="inputValue" placeholder="Input value (optional)">
+                    </div>
+                </div>
+
+                <div class="annotations-list">
+                    <h3>Annotations</h3>
+                    <div id="annotationsList"></div>
+                </div>
+            </div>
+
+            <div class="canvas-container">
+                <canvas id="annotationCanvas"></canvas>
+                <img id="backgroundImage" style="display: none;">
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

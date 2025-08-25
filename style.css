@@ -119,6 +119,21 @@ h1 {
     font-size: 14px;
 }
 
+.edit-btn {
+    width: 100%;
+    padding: 8px;
+    background: #28a745;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    margin-bottom: 10px;
+}
+
+.edit-btn:hover {
+    background: #218838;
+}
+
 .annotations-list {
     flex: 1;
     padding: 20px;
@@ -171,6 +186,18 @@ h1 {
 .annotation-item .delete-btn {
     float: right;
     background: #ff4444;
+    color: white;
+    border: none;
+    padding: 2px 6px;
+    border-radius: 2px;
+    font-size: 10px;
+    cursor: pointer;
+    margin-left: 5px;
+}
+
+.annotation-item .edit-item-btn {
+    float: right;
+    background: #007acc;
     color: white;
     border: none;
     padding: 2px 6px;

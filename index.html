@@ -12,6 +12,7 @@
             <h1>UI Annotation Tool</h1>
             <div class="controls">
                 <input type="file" id="imageInput" accept="image/*">
+                <input type="file" id="jsonInput" accept=".json">
                 <input type="text" id="formType" placeholder="Form Type" value="current bank account agreement for individuals - english">
                 <input type="number" id="pageNumber" placeholder="Page Number" value="1" min="1">
                 <button id="exportBtn">Export JSON</button>
@@ -31,6 +32,7 @@
                     <div id="sectionPanel" class="panel active">
                         <h3>Section Properties</h3>
                         <input type="text" id="sectionName" placeholder="Section name">
+                        <button id="editSectionBtn" class="edit-btn" style="display:none;">Update Section</button>
                     </div>
 
                     <div id="labelPanel" class="panel">
@@ -39,6 +41,7 @@
                             <option value="">Select parent section</option>
                         </select>
                         <input type="text" id="labelText" placeholder="Label text">
+                        <button id="editLabelBtn" class="edit-btn" style="display:none;">Update Label</button>
                     </div>
 
                     <div id="inputPanel" class="panel">
@@ -48,6 +51,7 @@
                         </select>
                         <input type="text" id="inputName" placeholder="Input name">
                         <input type="text" id="inputValue" placeholder="Input value (optional)">
+                        <button id="editInputBtn" class="edit-btn" style="display:none;">Update Input</button>
                     </div>
                 </div>
 

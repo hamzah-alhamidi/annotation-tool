@@ -17,6 +17,7 @@ class AnnotationTool {
         };
         
         this.selectedAnnotation = null;
+        this.editingAnnotation = null;
         
         this.setupEventListeners();
         this.updateCanvas();
@@ -26,6 +27,11 @@ class AnnotationTool {
         // Image upload
         document.getElementById('imageInput').addEventListener('change', (e) => {
             this.loadImage(e.target.files[0]);
+        });
+
+        // JSON import
+        document.getElementById('jsonInput').addEventListener('change', (e) => {
+            this.importJSON(e.target.files[0]);
         });
 
         // Mode selection
@@ -43,6 +49,11 @@ class AnnotationTool {
         // Export and clear buttons
         document.getElementById('exportBtn').addEventListener('click', () => this.exportJSON());
         document.getElementById('clearBtn').addEventListener('click', () => this.clearAll());
+
+        // Edit buttons
+        document.getElementById('editSectionBtn').addEventListener('click', () => this.updateAnnotation());
+        document.getElementById('editLabelBtn').addEventListener('click', () => this.updateAnnotation());
+        document.getElementById('editInputBtn').addEventListener('click', () => this.updateAnnotation());
     }
 
     loadImage(file) {
@@ -60,8 +71,82 @@ class AnnotationTool {
         reader.readAsDataURL(file);
     }
 
+    importJSON(file) {
+        if (!file) return;
+        
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const jsonData = JSON.parse(e.target.result);
+                this.loadFromJSON(jsonData);
+            } catch (error) {
+                alert('Error reading JSON file: ' + error.message);
+            }
+        };
+        reader.readAsText(file);
+    }
+
+    loadFromJSON(jsonData) {
+        // Clear existing annotations
+        this.annotations = { sections: [], labels: [], inputs: [] };
+        
+        // Set form properties
+        document.getElementById('formType').value = jsonData.formType || '';
+        document.getElementById('pageNumber').value = jsonData.pageNumber || 1;
+        
+        // Process fields and recreate the hierarchical structure
+        if (jsonData.fields) {
+            const sectionMap = new Map();
+            const labelMap = new Map();
+            
+            jsonData.fields.forEach(field => {
+                // Create or find section
+                let section = Array.from(sectionMap.values()).find(s => s.name === field.section);
+                if (!section) {
+                    section = {
+                        id: this.generateId(),
+                        name: field.section,
+                        boundingBox: field.boundingBox || [[0, 0], [100, 100]]
+                    };
+                    this.annotations.sections.push(section);
+                    sectionMap.set(section.name, section);
+                }
+                
+                // Create label
+                const label = {
+                    id: this.generateId(),
+                    parentSectionId: section.id,
+                    text: field.label,
+                    boundingBox: field.boundingBox
+                };
+                this.annotations.labels.push(label);
+                labelMap.set(field.label, label);
+                
+                // Create inputs
+                if (field.inputs) {
+                    field.inputs.forEach(input => {
+                        const inputAnnotation = {
+                            id: this.generateId(),
+                            parentLabelId: label.id,
+                            name: input.name,
+                            value: input.value,
+                            position: input.position
+                        };
+                        this.annotations.inputs.push(inputAnnotation);
+                    });
+                }
+            });
+        }
+        
+        this.updateCanvas();
+        this.updateAnnotationsList();
+        this.updateDropdowns();
+        this.clearEditMode();
+    }
+
     setMode(mode) {
         this.currentMode = mode;
+        this.clearEditMode();
         
         // Update active button
         document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
@@ -133,6 +218,11 @@ class AnnotationTool {
     }
 
     createAnnotation(bbox) {
+        if (this.editingAnnotation) {
+            this.updateAnnotationBoundingBox(bbox);
+            return;
+        }
+
         switch (this.currentMode) {
             case 'section':
                 const sectionName = document.getElementById('sectionName').value.trim();
@@ -183,6 +273,107 @@ class AnnotationTool {
                 document.getElementById('inputValue').value = '';
                 break;
         }
+    }
+
+    updateAnnotationBoundingBox(bbox) {
+        if (!this.editingAnnotation) return;
+
+        const annotation = this.findAnnotationById(this.editingAnnotation);
+        if (annotation) {
+            if (annotation.boundingBox) {
+                annotation.boundingBox = bbox;
+            } else if (annotation.position) {
+                annotation.position = bbox;
+            }
+            this.updateCanvas();
+            this.updateAnnotationsList();
+            this.clearEditMode();
+        }
+    }
+
+    findAnnotationById(id) {
+        return [...this.annotations.sections, ...this.annotations.labels, ...this.annotations.inputs]
+            .find(item => item.id === id);
+    }
+
+    editAnnotation(id) {
+        const annotation = this.findAnnotationById(id);
+        if (!annotation) return;
+
+        this.editingAnnotation = id;
+        
+        // Determine annotation type and switch to appropriate mode
+        let mode;
+        if (this.annotations.sections.find(s => s.id === id)) {
+            mode = 'section';
+            document.getElementById('sectionName').value = annotation.name;
+            document.getElementById('editSectionBtn').style.display = 'block';
+        } else if (this.annotations.labels.find(l => l.id === id)) {
+            mode = 'label';
+            document.getElementById('parentSection').value = annotation.parentSectionId;
+            document.getElementById('labelText').value = annotation.text;
+            document.getElementById('editLabelBtn').style.display = 'block';
+        } else if (this.annotations.inputs.find(i => i.id === id)) {
+            mode = 'input';
+            document.getElementById('parentLabel').value = annotation.parentLabelId;
+            document.getElementById('inputName').value = annotation.name;
+            document.getElementById('inputValue').value = annotation.value || '';
+            document.getElementById('editInputBtn').style.display = 'block';
+        }
+        
+        this.setMode(mode);
+        this.canvas.style.cursor = 'crosshair';
+    }
+
+    updateAnnotation() {
+        if (!this.editingAnnotation) return;
+
+        const annotation = this.findAnnotationById(this.editingAnnotation);
+        if (!annotation) return;
+
+        if (this.annotations.sections.find(s => s.id === this.editingAnnotation)) {
+            const newName = document.getElementById('sectionName').value.trim();
+            if (newName) {
+                annotation.name = newName;
+                document.getElementById('sectionName').value = '';
+            }
+        } else if (this.annotations.labels.find(l => l.id === this.editingAnnotation)) {
+            const newText = document.getElementById('labelText').value.trim();
+            const newParentSection = document.getElementById('parentSection').value;
+            if (newText && newParentSection) {
+                annotation.text = newText;
+                annotation.parentSectionId = newParentSection;
+                document.getElementById('labelText').value = '';
+            }
+        } else if (this.annotations.inputs.find(i => i.id === this.editingAnnotation)) {
+            const newName = document.getElementById('inputName').value.trim();
+            const newValue = document.getElementById('inputValue').value.trim();
+            const newParentLabel = document.getElementById('parentLabel').value;
+            if (newName && newParentLabel) {
+                annotation.name = newName;
+                annotation.value = newValue || null;
+                annotation.parentLabelId = newParentLabel;
+                document.getElementById('inputName').value = '';
+                document.getElementById('inputValue').value = '';
+            }
+        }
+
+        this.updateAnnotationsList();
+        this.updateDropdowns();
+        this.clearEditMode();
+    }
+
+    clearEditMode() {
+        this.editingAnnotation = null;
+        document.getElementById('editSectionBtn').style.display = 'none';
+        document.getElementById('editLabelBtn').style.display = 'none';
+        document.getElementById('editInputBtn').style.display = 'none';
+        
+        // Clear form fields
+        document.getElementById('sectionName').value = '';
+        document.getElementById('labelText').value = '';
+        document.getElementById('inputName').value = '';
+        document.getElementById('inputValue').value = '';
     }
 
     generateId() {
@@ -273,10 +464,11 @@ class AnnotationTool {
             <div class="name">${name}</div>
             <div class="coords">[${Math.round(bbox[0][0])}, ${Math.round(bbox[0][1])}] → [${Math.round(bbox[1][0])}, ${Math.round(bbox[1][1])}]</div>
             <button class="delete-btn" onclick="tool.deleteAnnotation('${id}')">×</button>
+            <button class="edit-item-btn" onclick="tool.editAnnotation('${id}')">Edit</button>
         `;
         
         item.addEventListener('click', (e) => {
-            if (e.target.classList.contains('delete-btn')) return;
+            if (e.target.classList.contains('delete-btn') || e.target.classList.contains('edit-item-btn')) return;
             this.selectAnnotation(id);
         });
         
@@ -397,6 +589,7 @@ class AnnotationTool {
         if (confirm('Are you sure you want to clear all annotations?')) {
             this.annotations = { sections: [], labels: [], inputs: [] };
             this.selectedAnnotation = null;
+            this.clearEditMode();
             this.updateCanvas();
             this.updateAnnotationsList();
             this.updateDropdowns();

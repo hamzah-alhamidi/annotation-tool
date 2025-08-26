@@ -54,6 +54,7 @@ class AnnotationTool {
         document.getElementById('editSectionBtn').addEventListener('click', () => this.updateAnnotation());
         document.getElementById('editLabelBtn').addEventListener('click', () => this.updateAnnotation());
         document.getElementById('editInputBtn').addEventListener('click', () => this.updateAnnotation());
+        document.getElementById('cancelEditBtn').addEventListener('click', () => this.clearEditMode());
     }
 
     loadImage(file) {
@@ -145,8 +146,15 @@ class AnnotationTool {
     }
 
     setMode(mode) {
+        // Don't clear edit mode if we're switching to edit a different type
+        const wasEditing = this.editingAnnotation;
+        
         this.currentMode = mode;
-        this.clearEditMode();
+        
+        // Only clear edit mode if not currently editing
+        if (!wasEditing) {
+            this.clearEditMode();
+        }
         
         // Update active button
         document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
@@ -211,7 +219,13 @@ class AnnotationTool {
             return;
         }
         
-        this.createAnnotation(bbox);
+        // If we're in edit mode, update the bounding box
+        if (this.editingAnnotation) {
+            this.updateAnnotationBoundingBox(bbox);
+        } else {
+            this.createAnnotation(bbox);
+        }
+        
         this.updateCanvas();
         this.updateAnnotationsList();
         this.updateDropdowns();
@@ -219,7 +233,7 @@ class AnnotationTool {
 
     createAnnotation(bbox) {
         if (this.editingAnnotation) {
-            this.updateAnnotationBoundingBox(bbox);
+            // This should not happen anymore since we handle it in stopDrawing
             return;
         }
 
@@ -276,18 +290,27 @@ class AnnotationTool {
     }
 
     updateAnnotationBoundingBox(bbox) {
-        if (!this.editingAnnotation) return;
+        if (!this.editingAnnotation) {
+            console.log('No annotation being edited');
+            return;
+        }
 
+        console.log('Updating bounding box for:', this.editingAnnotation);
         const annotation = this.findAnnotationById(this.editingAnnotation);
         if (annotation) {
+            console.log('Found annotation:', annotation);
             if (annotation.boundingBox) {
+                console.log('Updating boundingBox from:', annotation.boundingBox, 'to:', bbox);
                 annotation.boundingBox = bbox;
             } else if (annotation.position) {
+                console.log('Updating position from:', annotation.position, 'to:', bbox);
                 annotation.position = bbox;
             }
             this.updateCanvas();
             this.updateAnnotationsList();
             this.clearEditMode();
+        } else {
+            console.log('Annotation not found!');
         }
     }
 
@@ -301,6 +324,7 @@ class AnnotationTool {
         if (!annotation) return;
 
         this.editingAnnotation = id;
+        this.selectedAnnotation = id;
         
         // Determine annotation type and switch to appropriate mode
         let mode;
@@ -308,6 +332,7 @@ class AnnotationTool {
             mode = 'section';
             document.getElementById('sectionName').value = annotation.name;
             document.getElementById('editSectionBtn').style.display = 'block';
+            document.getElementById('cancelEditBtn').style.display = 'block';
         } else if (this.annotations.labels.find(l => l.id === id)) {
             mode = 'label';
             document.getElementById('parentSection').value = annotation.parentSectionId;
@@ -323,6 +348,24 @@ class AnnotationTool {
         
         this.setMode(mode);
         this.canvas.style.cursor = 'crosshair';
+        this.updateCanvas();
+        this.updateAnnotationsList();
+        
+        // Show edit status
+        this.showStatusMessage(`Editing ${type}: ${annotation.name || annotation.text}. Draw new bounding box or click Update.`);
+        
+        console.log('Edit mode activated for:', id, 'Type:', mode);
+    }
+
+    showStatusMessage(message) {
+        const statusDiv = document.getElementById('statusMessage');
+        statusDiv.textContent = message;
+        statusDiv.style.display = 'block';
+    }
+
+    hideStatusMessage() {
+        const statusDiv = document.getElementById('statusMessage');
+        statusDiv.style.display = 'none';
     }
 
     updateAnnotation() {
@@ -365,15 +408,31 @@ class AnnotationTool {
 
     clearEditMode() {
         this.editingAnnotation = null;
+        this.selectedAnnotation = null;
         document.getElementById('editSectionBtn').style.display = 'none';
         document.getElementById('editLabelBtn').style.display = 'none';
         document.getElementById('editInputBtn').style.display = 'none';
+        document.getElementById('cancelEditBtn').style.display = 'none';
         
         // Clear form fields
         document.getElementById('sectionName').value = '';
         document.getElementById('labelText').value = '';
         document.getElementById('inputName').value = '';
         document.getElementById('inputValue').value = '';
+        
+        // Reset parent dropdowns to default
+        document.getElementById('parentSection').value = '';
+        document.getElementById('parentLabel').value = '';
+        
+        // Update visual state
+        document.querySelectorAll('.annotation-item').forEach(item => {
+            item.classList.remove('selected');
+            item.classList.remove('editing');
+        });
+        this.updateCanvas();
+        this.hideStatusMessage();
+        
+        console.log('Edit mode cleared');
     }
 
     generateId() {
@@ -407,6 +466,29 @@ class AnnotationTool {
         this.annotations.inputs.forEach(input => {
             this.drawRect(input.position, 'input-box', input.id === this.selectedAnnotation);
         });
+        
+        // Add editing indicator
+        if (this.editingAnnotation) {
+            const editingAnnotation = this.findAnnotationById(this.editingAnnotation);
+            if (editingAnnotation) {
+                const bbox = editingAnnotation.boundingBox || editingAnnotation.position;
+                this.drawEditingIndicator(bbox);
+            }
+        }
+    }
+
+    drawEditingIndicator(bbox) {
+        this.ctx.strokeStyle = '#ff0000';
+        this.ctx.lineWidth = 3;
+        this.ctx.setLineDash([10, 5]);
+        
+        const x = bbox[0][0];
+        const y = bbox[0][1];
+        const width = bbox[1][0] - bbox[0][0];
+        const height = bbox[1][1] - bbox[0][1];
+        
+        this.ctx.strokeRect(x, y, width, height);
+        this.ctx.setLineDash([]);
     }
 
     drawRect(bbox, className, isSelected) {
@@ -438,6 +520,9 @@ class AnnotationTool {
         // Add sections
         this.annotations.sections.forEach(section => {
             const item = this.createAnnotationListItem('Section', section.name, section.boundingBox, section.id);
+            if (this.editingAnnotation === section.id) {
+                item.classList.add('editing');
+            }
             container.appendChild(item);
         });
         
@@ -445,6 +530,9 @@ class AnnotationTool {
         this.annotations.labels.forEach(label => {
             const section = this.annotations.sections.find(s => s.id === label.parentSectionId);
             const item = this.createAnnotationListItem('Label', `${label.text} (${section?.name || 'Unknown'})`, label.boundingBox, label.id);
+            if (this.editingAnnotation === label.id) {
+                item.classList.add('editing');
+            }
             container.appendChild(item);
         });
         
@@ -452,6 +540,9 @@ class AnnotationTool {
         this.annotations.inputs.forEach(input => {
             const label = this.annotations.labels.find(l => l.id === input.parentLabelId);
             const item = this.createAnnotationListItem('Input', `${input.name} (${label?.text || 'Unknown'})`, input.position, input.id);
+            if (this.editingAnnotation === input.id) {
+                item.classList.add('editing');
+            }
             container.appendChild(item);
         });
     }
@@ -463,25 +554,46 @@ class AnnotationTool {
             <div class="type">${type}</div>
             <div class="name">${name}</div>
             <div class="coords">[${Math.round(bbox[0][0])}, ${Math.round(bbox[0][1])}] → [${Math.round(bbox[1][0])}, ${Math.round(bbox[1][1])}]</div>
-            <button class="delete-btn" onclick="tool.deleteAnnotation('${id}')">×</button>
-            <button class="edit-item-btn" onclick="tool.editAnnotation('${id}')">Edit</button>
+            <button class="delete-btn" data-id="${id}">×</button>
+            <button class="edit-item-btn" data-id="${id}">Edit</button>
         `;
         
+        // Add event listeners for the buttons
+        const deleteBtn = item.querySelector('.delete-btn');
+        const editBtn = item.querySelector('.edit-item-btn');
+        
+        deleteBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.deleteAnnotation(id);
+        });
+        
+        editBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.editAnnotation(id);
+        });
+        
         item.addEventListener('click', (e) => {
-            if (e.target.classList.contains('delete-btn') || e.target.classList.contains('edit-item-btn')) return;
-            this.selectAnnotation(id);
+            if (!e.target.classList.contains('delete-btn') && !e.target.classList.contains('edit-item-btn')) {
+                this.selectAnnotation(id);
+            }
         });
         
         return item;
     }
 
     selectAnnotation(id) {
+        // Don't change selection when in edit mode
+        if (this.editingAnnotation) return;
+        
         this.selectedAnnotation = this.selectedAnnotation === id ? null : id;
         
         // Update visual selection
         document.querySelectorAll('.annotation-item').forEach(item => item.classList.remove('selected'));
-        if (this.selectedAnnotation) {
-            event.target.closest('.annotation-item').classList.add('selected');
+        if (this.selectedAnnotation && event && event.target) {
+            const targetItem = event.target.closest('.annotation-item');
+            if (targetItem) {
+                targetItem.classList.add('selected');
+            }
         }
         
         this.updateCanvas();

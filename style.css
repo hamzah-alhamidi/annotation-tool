@@ -127,11 +127,26 @@ h1 {
     border: none;
     border-radius: 4px;
     cursor: pointer;
-    margin-bottom: 10px;
+    margin-bottom: 5px;
 }
 
 .edit-btn:hover {
     background: #218838;
+}
+
+.cancel-btn {
+    width: 100%;
+    padding: 8px;
+    background: #dc3545;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    margin-bottom: 10px;
+}
+
+.cancel-btn:hover {
+    background: #c82333;
 }
 
 .annotations-list {
@@ -163,6 +178,16 @@ h1 {
 .annotation-item.selected {
     background: #e3f2fd;
     border-left-color: #1976d2;
+}
+
+.annotation-item.editing {
+    background: #fff3e0;
+    border-left-color: #ff9800;
+    border-left-width: 6px;
+}
+
+.annotation-item.editing .type {
+    color: #ff9800;
 }
 
 .annotation-item .type {
@@ -211,6 +236,19 @@ h1 {
     position: relative;
     overflow: auto;
     background: #f0f0f0;
+}
+
+.status-message {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    background: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 14px;
+    z-index: 1000;
+    display: none;
 }
 
 #annotationCanvas {

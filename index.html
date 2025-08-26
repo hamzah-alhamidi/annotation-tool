@@ -33,6 +33,7 @@
                         <h3>Section Properties</h3>
                         <input type="text" id="sectionName" placeholder="Section name">
                         <button id="editSectionBtn" class="edit-btn" style="display:none;">Update Section</button>
+                        <button id="cancelEditBtn" class="cancel-btn" style="display:none;">Cancel Edit</button>
                     </div>
 
                     <div id="labelPanel" class="panel">
@@ -62,6 +63,7 @@
             </div>
 
             <div class="canvas-container">
+                <div id="statusMessage" class="status-message"></div>
                 <canvas id="annotationCanvas"></canvas>
                 <img id="backgroundImage" style="display: none;">
             </div>

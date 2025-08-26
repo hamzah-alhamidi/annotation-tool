@@ -104,10 +104,13 @@ class AnnotationTool {
                 // Create or find section
                 let section = Array.from(sectionMap.values()).find(s => s.name === field.section);
                 if (!section) {
+                    // Use section coordinates if available, otherwise default
+                    const sectionBoundingBox = field.sectionBoundingBox || [[0, 0], [100, 100]];
+                    
                     section = {
                         id: this.generateId(),
                         name: field.section,
-                        boundingBox: field.boundingBox || [[0, 0], [100, 100]]
+                        boundingBox: sectionBoundingBox
                     };
                     this.annotations.sections.push(section);
                     sectionMap.set(section.name, section);
@@ -130,6 +133,8 @@ class AnnotationTool {
                             id: this.generateId(),
                             parentLabelId: label.id,
                             name: input.name,
+                            type: input.type || 'text',
+                            lang: input.lang || null, // Add language support
                             value: input.value,
                             position: input.position
                         };
@@ -271,6 +276,8 @@ class AnnotationTool {
             case 'input':
                 const parentLabel = document.getElementById('parentLabel').value;
                 const inputName = document.getElementById('inputName').value.trim();
+                const inputType = document.getElementById('inputType').value;
+                const inputLang = document.getElementById('inputLang').value;
                 const inputValue = document.getElementById('inputValue').value.trim();
                 if (!parentLabel || !inputName) {
                     alert('Please select a parent label and enter input name');
@@ -280,10 +287,14 @@ class AnnotationTool {
                     id: this.generateId(),
                     parentLabelId: parentLabel,
                     name: inputName,
+                    type: inputType,
+                    lang: inputLang || null,
                     value: inputValue || null,
                     position: bbox
                 });
                 document.getElementById('inputName').value = '';
+                document.getElementById('inputType').value = 'text';
+                document.getElementById('inputLang').value = '';
                 document.getElementById('inputValue').value = '';
                 break;
         }
@@ -342,6 +353,8 @@ class AnnotationTool {
             mode = 'input';
             document.getElementById('parentLabel').value = annotation.parentLabelId;
             document.getElementById('inputName').value = annotation.name;
+            document.getElementById('inputType').value = annotation.type || 'text';
+            document.getElementById('inputLang').value = annotation.lang || '';
             document.getElementById('inputValue').value = annotation.value || '';
             document.getElementById('editInputBtn').style.display = 'block';
         }
@@ -390,13 +403,19 @@ class AnnotationTool {
             }
         } else if (this.annotations.inputs.find(i => i.id === this.editingAnnotation)) {
             const newName = document.getElementById('inputName').value.trim();
+            const newType = document.getElementById('inputType').value;
+            const newLang = document.getElementById('inputLang').value;
             const newValue = document.getElementById('inputValue').value.trim();
             const newParentLabel = document.getElementById('parentLabel').value;
             if (newName && newParentLabel) {
                 annotation.name = newName;
+                annotation.type = newType;
+                annotation.lang = newLang || null;
                 annotation.value = newValue || null;
                 annotation.parentLabelId = newParentLabel;
                 document.getElementById('inputName').value = '';
+                document.getElementById('inputType').value = 'text';
+                document.getElementById('inputLang').value = '';
                 document.getElementById('inputValue').value = '';
             }
         }
@@ -418,6 +437,8 @@ class AnnotationTool {
         document.getElementById('sectionName').value = '';
         document.getElementById('labelText').value = '';
         document.getElementById('inputName').value = '';
+        document.getElementById('inputType').value = 'text';
+        document.getElementById('inputLang').value = '';
         document.getElementById('inputValue').value = '';
         
         // Reset parent dropdowns to default
@@ -437,6 +458,35 @@ class AnnotationTool {
 
     generateId() {
         return Date.now().toString(36) + Math.random().toString(36).substr(2);
+    }
+
+    getTypeDisplayName(type) {
+        const typeMap = {
+            'text': 'Text',
+            'textarea': 'Text Area',
+            'address': 'Address',
+            'name': 'Name',
+            'number': 'Number',
+            'date': 'Date',
+            'email': 'Email',
+            'phone': 'Phone',
+            'checkbox': 'Checkbox',
+            'radio': 'Radio',
+            'select': 'Select',
+            'currency': 'Currency',
+            'percentage': 'Percentage',
+            'id': 'ID',
+            'signature': 'Signature'
+        };
+        return typeMap[type] || type;
+    }
+
+    getLangDisplayName(lang) {
+        const langMap = {
+            'en': 'EN',
+            'ar': 'عر'
+        };
+        return langMap[lang] || '';
     }
 
     updateCanvas() {
@@ -464,7 +514,17 @@ class AnnotationTool {
         
         // Draw inputs
         this.annotations.inputs.forEach(input => {
-            this.drawRect(input.position, 'input-box', input.id === this.selectedAnnotation);
+            const isArabic = input.lang === 'ar';
+            const isEnglish = input.lang === 'en';
+            let className = 'input-box';
+            
+            if (isArabic) {
+                className += '-arabic';
+            } else if (isEnglish) {
+                className += '-english';
+            }
+            
+            this.drawRect(input.position, className, input.id === this.selectedAnnotation);
         });
         
         // Add editing indicator
@@ -495,10 +555,12 @@ class AnnotationTool {
         const styles = {
             'section-box': { stroke: '#ff6b35', fill: 'rgba(255, 107, 53, 0.1)', width: 3 },
             'label-box': { stroke: '#4ecdc4', fill: 'rgba(78, 205, 196, 0.1)', width: 2 },
-            'input-box': { stroke: '#45b7d1', fill: 'rgba(69, 183, 209, 0.1)', width: 2 }
+            'input-box': { stroke: '#45b7d1', fill: 'rgba(69, 183, 209, 0.1)', width: 2 },
+            'input-box-arabic': { stroke: '#28a745', fill: 'rgba(40, 167, 69, 0.1)', width: 2 },
+            'input-box-english': { stroke: '#dc3545', fill: 'rgba(220, 53, 69, 0.1)', width: 2 }
         };
         
-        const style = styles[className];
+        const style = styles[className] || styles['input-box'];
         this.ctx.strokeStyle = style.stroke;
         this.ctx.fillStyle = style.fill;
         this.ctx.lineWidth = isSelected ? style.width + 2 : style.width;
@@ -511,6 +573,14 @@ class AnnotationTool {
         
         this.ctx.fillRect(x, y, width, height);
         this.ctx.strokeRect(x, y, width, height);
+        
+        // Add language indicator for text fields
+        if (className.includes('arabic') || className.includes('english')) {
+            const indicator = className.includes('arabic') ? 'عر' : 'EN';
+            this.ctx.fillStyle = style.stroke;
+            this.ctx.font = '12px Arial';
+            this.ctx.fillText(indicator, x + 2, y + 14);
+        }
     }
 
     updateAnnotationsList() {
@@ -539,10 +609,21 @@ class AnnotationTool {
         // Add inputs
         this.annotations.inputs.forEach(input => {
             const label = this.annotations.labels.find(l => l.id === input.parentLabelId);
-            const item = this.createAnnotationListItem('Input', `${input.name} (${label?.text || 'Unknown'})`, input.position, input.id);
+            const typeDisplay = this.getTypeDisplayName(input.type || 'text');
+            const langDisplay = input.lang ? ` (${this.getLangDisplayName(input.lang)})` : '';
+            const displayName = `${input.name} (${typeDisplay}${langDisplay}) - ${label?.text || 'Unknown'}`;
+            const item = this.createAnnotationListItem('Input', displayName, input.position, input.id);
             if (this.editingAnnotation === input.id) {
                 item.classList.add('editing');
             }
+            
+            // Add language-specific styling
+            if (input.lang === 'ar') {
+                item.querySelector('.type').classList.add('arabic');
+            } else if (input.lang === 'en') {
+                item.querySelector('.type').classList.add('english');
+            }
+            
             container.appendChild(item);
         });
     }
@@ -667,10 +748,13 @@ class AnnotationTool {
                 
                 const field = {
                     section: section.name,
+                    sectionBoundingBox: section.boundingBox, // Preserve section coordinates
                     label: label.text,
                     boundingBox: label.boundingBox,
                     inputs: labelInputs.map(input => ({
                         name: input.name,
+                        type: input.type,
+                        lang: input.lang,
                         position: input.position,
                         value: input.value
                     }))

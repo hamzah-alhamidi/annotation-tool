@@ -19,6 +19,15 @@ class AnnotationTool {
         this.selectedAnnotation = null;
         this.editingAnnotation = null;
         
+        // Drag and resize functionality
+        this.isDragging = false;
+        this.isResizing = false;
+        this.dragStartX = 0;
+        this.dragStartY = 0;
+        this.dragTarget = null;
+        this.resizeHandle = null;
+        this.originalBbox = null;
+        
         this.setupEventListeners();
         this.updateCanvas();
     }
@@ -42,9 +51,9 @@ class AnnotationTool {
         });
 
         // Canvas events
-        this.canvas.addEventListener('mousedown', (e) => this.startDrawing(e));
-        this.canvas.addEventListener('mousemove', (e) => this.draw(e));
-        this.canvas.addEventListener('mouseup', (e) => this.stopDrawing(e));
+        this.canvas.addEventListener('mousedown', (e) => this.handleMouseDown(e));
+        this.canvas.addEventListener('mousemove', (e) => this.handleMouseMove(e));
+        this.canvas.addEventListener('mouseup', (e) => this.handleMouseUp(e));
 
         // Export and clear buttons
         document.getElementById('exportBtn').addEventListener('click', () => this.exportJSON());
@@ -179,6 +188,53 @@ class AnnotationTool {
             x: (e.clientX - rect.left) * (this.canvas.width / rect.width),
             y: (e.clientY - rect.top) * (this.canvas.height / rect.height)
         };
+    }
+
+    handleMouseDown(e) {
+        const pos = this.getMousePos(e);
+        
+        // Check if we're clicking on an existing annotation for drag/resize
+        const clickedAnnotation = this.getAnnotationAtPoint(pos.x, pos.y);
+        
+        if (clickedAnnotation && this.editingAnnotation) {
+            // Check if clicking on resize handle
+            const resizeHandle = this.getResizeHandle(clickedAnnotation, pos.x, pos.y);
+            if (resizeHandle) {
+                this.startResize(clickedAnnotation, resizeHandle, pos.x, pos.y);
+                return;
+            }
+            
+            // Start dragging
+            this.startDrag(clickedAnnotation, pos.x, pos.y);
+            return;
+        }
+        
+        // Default drawing behavior
+        this.startDrawing(e);
+    }
+
+    handleMouseMove(e) {
+        const pos = this.getMousePos(e);
+        
+        if (this.isDragging) {
+            this.updateDrag(pos.x, pos.y);
+        } else if (this.isResizing) {
+            this.updateResize(pos.x, pos.y);
+        } else {
+            // Update cursor based on what's under mouse
+            this.updateCursor(pos.x, pos.y);
+            this.draw(e);
+        }
+    }
+
+    handleMouseUp(e) {
+        if (this.isDragging) {
+            this.endDrag();
+        } else if (this.isResizing) {
+            this.endResize();
+        } else {
+            this.stopDrawing(e);
+        }
     }
 
     startDrawing(e) {
@@ -365,7 +421,7 @@ class AnnotationTool {
         this.updateAnnotationsList();
         
         // Show edit status
-        this.showStatusMessage(`Editing ${type}: ${annotation.name || annotation.text}. Draw new bounding box or click Update.`);
+        this.showStatusMessage(`Editing ${type}: ${annotation.name || annotation.text}. Drag to move, drag corners/edges to resize, or click Update.`);
         
         console.log('Edit mode activated for:', id, 'Type:', mode);
     }
@@ -428,6 +484,14 @@ class AnnotationTool {
     clearEditMode() {
         this.editingAnnotation = null;
         this.selectedAnnotation = null;
+        
+        // Reset drag/resize state
+        this.isDragging = false;
+        this.isResizing = false;
+        this.dragTarget = null;
+        this.resizeHandle = null;
+        this.originalBbox = null;
+        
         document.getElementById('editSectionBtn').style.display = 'none';
         document.getElementById('editLabelBtn').style.display = 'none';
         document.getElementById('editInputBtn').style.display = 'none';
@@ -458,6 +522,197 @@ class AnnotationTool {
 
     generateId() {
         return Date.now().toString(36) + Math.random().toString(36).substr(2);
+    }
+
+    getAnnotationAtPoint(x, y) {
+        // Check all annotations to see if point is inside any
+        const allAnnotations = [
+            ...this.annotations.sections.map(s => ({...s, type: 'section', bbox: s.boundingBox})),
+            ...this.annotations.labels.map(l => ({...l, type: 'label', bbox: l.boundingBox})),
+            ...this.annotations.inputs.map(i => ({...i, type: 'input', bbox: i.position}))
+        ];
+        
+        // Check from top to bottom (reverse order for proper layering)
+        for (let i = allAnnotations.length - 1; i >= 0; i--) {
+            const annotation = allAnnotations[i];
+            if (this.isPointInBbox(x, y, annotation.bbox)) {
+                return annotation;
+            }
+        }
+        return null;
+    }
+
+    isPointInBbox(x, y, bbox) {
+        return x >= bbox[0][0] && x <= bbox[1][0] && y >= bbox[0][1] && y <= bbox[1][1];
+    }
+
+    getResizeHandle(annotation, x, y) {
+        const bbox = annotation.bbox;
+        const handleSize = 8;
+        
+        // Check corners and edges
+        const handles = {
+            'nw': [bbox[0][0], bbox[0][1]], // top-left
+            'ne': [bbox[1][0], bbox[0][1]], // top-right
+            'sw': [bbox[0][0], bbox[1][1]], // bottom-left
+            'se': [bbox[1][0], bbox[1][1]], // bottom-right
+            'n': [(bbox[0][0] + bbox[1][0])/2, bbox[0][1]], // top
+            's': [(bbox[0][0] + bbox[1][0])/2, bbox[1][1]], // bottom
+            'w': [bbox[0][0], (bbox[0][1] + bbox[1][1])/2], // left
+            'e': [bbox[1][0], (bbox[0][1] + bbox[1][1])/2]  // right
+        };
+        
+        for (const [handle, pos] of Object.entries(handles)) {
+            if (Math.abs(x - pos[0]) <= handleSize && Math.abs(y - pos[1]) <= handleSize) {
+                return handle;
+            }
+        }
+        
+        return null;
+    }
+
+    startDrag(annotation, x, y) {
+        this.isDragging = true;
+        this.dragTarget = annotation;
+        this.dragStartX = x;
+        this.dragStartY = y;
+        this.originalBbox = JSON.parse(JSON.stringify(annotation.bbox));
+        this.canvas.style.cursor = 'move';
+    }
+
+    updateDrag(x, y) {
+        if (!this.isDragging || !this.dragTarget) return;
+        
+        const deltaX = x - this.dragStartX;
+        const deltaY = y - this.dragStartY;
+        
+        const newBbox = [
+            [this.originalBbox[0][0] + deltaX, this.originalBbox[0][1] + deltaY],
+            [this.originalBbox[1][0] + deltaX, this.originalBbox[1][1] + deltaY]
+        ];
+        
+        // Update the annotation
+        this.updateAnnotationBbox(this.dragTarget, newBbox);
+        this.updateCanvas();
+    }
+
+    endDrag() {
+        this.isDragging = false;
+        this.dragTarget = null;
+        this.originalBbox = null;
+        this.updateCursor();
+    }
+
+    startResize(annotation, handle, x, y) {
+        this.isResizing = true;
+        this.dragTarget = annotation;
+        this.resizeHandle = handle;
+        this.dragStartX = x;
+        this.dragStartY = y;
+        this.originalBbox = JSON.parse(JSON.stringify(annotation.bbox));
+        this.updateCursor();
+    }
+
+    updateResize(x, y) {
+        if (!this.isResizing || !this.dragTarget) return;
+        
+        const deltaX = x - this.dragStartX;
+        const deltaY = y - this.dragStartY;
+        let newBbox = JSON.parse(JSON.stringify(this.originalBbox));
+        
+        // Update bbox based on resize handle
+        switch (this.resizeHandle) {
+            case 'nw':
+                newBbox[0][0] += deltaX;
+                newBbox[0][1] += deltaY;
+                break;
+            case 'ne':
+                newBbox[1][0] += deltaX;
+                newBbox[0][1] += deltaY;
+                break;
+            case 'sw':
+                newBbox[0][0] += deltaX;
+                newBbox[1][1] += deltaY;
+                break;
+            case 'se':
+                newBbox[1][0] += deltaX;
+                newBbox[1][1] += deltaY;
+                break;
+            case 'n':
+                newBbox[0][1] += deltaY;
+                break;
+            case 's':
+                newBbox[1][1] += deltaY;
+                break;
+            case 'w':
+                newBbox[0][0] += deltaX;
+                break;
+            case 'e':
+                newBbox[1][0] += deltaX;
+                break;
+        }
+        
+        // Ensure valid bbox (min size and correct order)
+        if (newBbox[1][0] - newBbox[0][0] < 10) return;
+        if (newBbox[1][1] - newBbox[0][1] < 10) return;
+        
+        this.updateAnnotationBbox(this.dragTarget, newBbox);
+        this.updateCanvas();
+    }
+
+    endResize() {
+        this.isResizing = false;
+        this.dragTarget = null;
+        this.resizeHandle = null;
+        this.originalBbox = null;
+        this.updateCursor();
+    }
+
+    updateAnnotationBbox(annotation, newBbox) {
+        // Find and update the actual annotation object
+        let target = null;
+        if (annotation.type === 'section') {
+            target = this.annotations.sections.find(s => s.id === annotation.id);
+            if (target) target.boundingBox = newBbox;
+        } else if (annotation.type === 'label') {
+            target = this.annotations.labels.find(l => l.id === annotation.id);
+            if (target) target.boundingBox = newBbox;
+        } else if (annotation.type === 'input') {
+            target = this.annotations.inputs.find(i => i.id === annotation.id);
+            if (target) target.position = newBbox;
+        }
+        
+        // Update the annotation object for immediate feedback
+        annotation.bbox = newBbox;
+    }
+
+    updateCursor(x, y) {
+        if (!this.editingAnnotation) {
+            this.canvas.style.cursor = 'crosshair';
+            return;
+        }
+        
+        if (x !== undefined && y !== undefined) {
+            const annotation = this.getAnnotationAtPoint(x, y);
+            if (annotation && annotation.id === this.editingAnnotation) {
+                const handle = this.getResizeHandle(annotation, x, y);
+                if (handle) {
+                    const cursors = {
+                        'nw': 'nw-resize', 'ne': 'ne-resize',
+                        'sw': 'sw-resize', 'se': 'se-resize',
+                        'n': 'n-resize', 's': 's-resize',
+                        'w': 'w-resize', 'e': 'e-resize'
+                    };
+                    this.canvas.style.cursor = cursors[handle];
+                } else {
+                    this.canvas.style.cursor = 'move';
+                }
+            } else {
+                this.canvas.style.cursor = 'crosshair';
+            }
+        } else {
+            this.canvas.style.cursor = 'crosshair';
+        }
     }
 
     getTypeDisplayName(type) {
@@ -527,12 +782,13 @@ class AnnotationTool {
             this.drawRect(input.position, className, input.id === this.selectedAnnotation);
         });
         
-        // Add editing indicator
+        // Add editing indicator and resize handles
         if (this.editingAnnotation) {
             const editingAnnotation = this.findAnnotationById(this.editingAnnotation);
             if (editingAnnotation) {
                 const bbox = editingAnnotation.boundingBox || editingAnnotation.position;
                 this.drawEditingIndicator(bbox);
+                this.drawResizeHandles(bbox);
             }
         }
     }
@@ -549,6 +805,30 @@ class AnnotationTool {
         
         this.ctx.strokeRect(x, y, width, height);
         this.ctx.setLineDash([]);
+    }
+
+    drawResizeHandles(bbox) {
+        const handleSize = 8;
+        const handles = [
+            [bbox[0][0], bbox[0][1]], // top-left
+            [bbox[1][0], bbox[0][1]], // top-right
+            [bbox[0][0], bbox[1][1]], // bottom-left
+            [bbox[1][0], bbox[1][1]], // bottom-right
+            [(bbox[0][0] + bbox[1][0])/2, bbox[0][1]], // top
+            [(bbox[0][0] + bbox[1][0])/2, bbox[1][1]], // bottom
+            [bbox[0][0], (bbox[0][1] + bbox[1][1])/2], // left
+            [bbox[1][0], (bbox[0][1] + bbox[1][1])/2]  // right
+        ];
+        
+        this.ctx.fillStyle = '#ff0000';
+        this.ctx.strokeStyle = '#ffffff';
+        this.ctx.lineWidth = 1;
+        this.ctx.setLineDash([]);
+        
+        handles.forEach(([x, y]) => {
+            this.ctx.fillRect(x - handleSize/2, y - handleSize/2, handleSize, handleSize);
+            this.ctx.strokeRect(x - handleSize/2, y - handleSize/2, handleSize, handleSize);
+        });
     }
 
     drawRect(bbox, className, isSelected) {
